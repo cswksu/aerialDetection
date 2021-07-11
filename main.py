@@ -2,6 +2,8 @@ import numpy as np
 import torch
 import torchvision
 
+from torch.utils.tensorboard import SummaryWriter
+
 import random
 
 import os
@@ -18,6 +20,8 @@ import torchvision.transforms as transforms
 import torchvision.transforms.functional as TF
 
 import copy
+
+writer = SummaryWriter()
 
 data_path = 'C:/aerialimagelabeling/AerialImageDataset'
 
@@ -123,9 +127,13 @@ def train(epoch, data_loader, model, optimizer, criterion):
         num_pos = out.shape[0] * batch_acc
         accuracyNumerator += num_pos
         accuracyDenominator += num_entries
+        writer.add_scalar('Loss/batch', loss.item(), idx)
+        writer.add_scalar('Acc/batch', batch_acc, idx)
     train_loss_history.append(lossNumerator/lossDenominator)
     train_acc_history.append(accuracyNumerator/accuracyDenominator)
     print('Training Epoch #' + str(epoch)+' - Loss: ' + str(train_loss_history[-1]) + '; Acc: ' + str(train_acc_history[-1]))
+    writer.add_scalar('Loss/train', train_loss_history[-1], epoch)
+    writer.add_scalar('Acc/train', train_acc_history[-1], epoch)
 
 
 
@@ -149,7 +157,9 @@ def validate(epoch, val_loader, model, criterion):
     val_loss_history.append(lossNumerator/lossDenominator)
     val_acc_history.append(accuracyNumerator/accuracyDenominator)
     print('Validation Epoch #' + str(epoch)+' - Loss: ' + str(val_loss_history[-1]) + '; Acc: ' + str(val_acc_history[-1]))
-    return accuracyNumerator/accuracyDenominator
+    writer.add_scalar('Loss/val', val_loss_history[-1], epoch)
+    writer.add_scalar('Acc/val', val_acc_history[-1], epoch)
+    return val_acc_history[-1]
 
 
 
@@ -201,6 +211,7 @@ def main():
             best_model = copy.deepcopy(model)
         print('Epoch num: ' + str(epoch)+'; Accuracy: ' + str(accuracy))
     torch.save(best_model.state_dict(), './checkpoints/project.pth')
+    writer.close()
 
 
 

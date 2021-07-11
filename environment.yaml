@@ -10,3 +10,4 @@ dependencies:
   - torchaudio
   - cudatoolkit=11.1
   - pillow
+  - tensorboard
