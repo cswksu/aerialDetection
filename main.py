@@ -135,7 +135,13 @@ def train(epoch, data_loader, model, optimizer, criterion):
     writer.add_scalar('Loss/train', train_loss_history[-1], epoch)
     writer.add_scalar('Acc/train', train_acc_history[-1], epoch)
 
-
+def writeImage(out, targ, epoch):
+    with torch.no_grad():
+        roundedOut = torch.round(out)
+        gridOut = torchvision.utils.make_grid(roundedOut)
+        gridTarg = torchvision.utils.make_grid(targ)
+        writer.add_image('val_targ', gridTarg, epoch)
+        writer.add_image('val_output', gridOut, epoch)
 
 def validate(epoch, val_loader, model, criterion):
     accuracyNumerator = 0
@@ -154,6 +160,8 @@ def validate(epoch, val_loader, model, criterion):
             acc = accuracy(out, target)
             accuracyNumerator += out.shape[0] * acc
             accuracyDenominator += out.shape[0]
+            if idx == 0:
+                writeImage(out, target, epoch)
     val_loss_history.append(lossNumerator/lossDenominator)
     val_acc_history.append(accuracyNumerator/accuracyDenominator)
     print('Validation Epoch #' + str(epoch)+' - Loss: ' + str(val_loss_history[-1]) + '; Acc: ' + str(val_acc_history[-1]))
