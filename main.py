@@ -166,6 +166,7 @@ def validate(epoch, val_loader, model, criterion):
             accuracyDenominator += out.shape[0]
             if idx == 0:
                 writeImage(out, target, epoch)
+                writer.add_pr_curve('isBuildingPR', target, out, epoch, num_thresholds=1, weights=None)
     val_loss_history.append(lossNumerator/lossDenominator)
     val_acc_history.append(accuracyNumerator/accuracyDenominator)
     print('Validation Epoch #' + str(epoch)+' - Loss: ' + str(val_loss_history[-1]) + '; Acc: ' + str(val_acc_history[-1]))
