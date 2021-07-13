@@ -25,8 +25,10 @@ writer = SummaryWriter()
 
 data_path = 'C:/aerialimagelabeling/AerialImageDataset'
 
-NUM_EPOCHS = 10
+NUM_EPOCHS = 20
 BATCH_SIZE = 20
+
+total_batch_count = 0
 
 train_loss_history = []
 train_acc_history = []
@@ -104,6 +106,7 @@ def accuracy(output, target):
         return acc.item()
 
 def train(epoch, data_loader, model, optimizer, criterion):
+    global total_batch_count
     accuracyNumerator = 0
     accuracyDenominator = 0
     lossNumerator = 0
@@ -127,8 +130,9 @@ def train(epoch, data_loader, model, optimizer, criterion):
         num_pos = out.shape[0] * batch_acc
         accuracyNumerator += num_pos
         accuracyDenominator += num_entries
-        writer.add_scalar('Loss/batch', loss.item(), idx)
-        writer.add_scalar('Acc/batch', batch_acc, idx)
+        writer.add_scalar('Loss/batch', loss.item(), total_batch_count)
+        writer.add_scalar('Acc/batch', batch_acc, total_batch_count)
+        total_batch_count += 1
     train_loss_history.append(lossNumerator/lossDenominator)
     train_acc_history.append(accuracyNumerator/accuracyDenominator)
     print('Training Epoch #' + str(epoch)+' - Loss: ' + str(train_loss_history[-1]) + '; Acc: ' + str(train_acc_history[-1]))
