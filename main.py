@@ -190,7 +190,7 @@ def validate(epoch, val_loader, model, criterion):
                 target = target.cuda()
             out = model.forward(data)
             loss = criterion.forward(out, target)
-            lossNumerator += out.shape[0] * loss
+            lossNumerator += out.shape[0] * loss.item()
             lossDenominator += out.shape[0]
             acc = accuracy(out, target)
             accuracyNumerator += out.shape[0] * acc
@@ -233,7 +233,7 @@ def main():
     model = ResUNet(num_blocks=NUM_BLOCKS)
     if torch.cuda.is_available():
         model = model.cuda()
-    criterion = flatMSE()
+    criterion = diceLoss()
     optimizer = torch.optim.Adam(model.parameters())
     bestAcc = 0
     best_model = None
