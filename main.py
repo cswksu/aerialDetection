@@ -128,6 +128,7 @@ def accuracy(output, target):
 
 def train(epoch, data_loader, model, optimizer, criterion):
     #training loop
+    model.train()
     global total_batch_count #for tensorboard global index
     accuracyNumerator = 0
     accuracyDenominator = 0
@@ -177,6 +178,7 @@ def writeImage(out, targ, epoch):
 
 def validate(epoch, val_loader, model, criterion):
     #validation step
+    model.eval()
     accuracyNumerator = 0
     accuracyDenominator = 0
     lossNumerator = 0
