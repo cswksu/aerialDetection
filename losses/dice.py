@@ -10,6 +10,7 @@ class diceLoss(nn.ModuleList):
     def forward(self, x, y):
         flat_x = torch.flatten(x)
         flat_y = torch.flatten(y)
+        flat_y = flat_y.float()
         dot = torch.dot(flat_x, flat_y)
         num = torch.add(torch.mul(dot, 2),1)
         denom = torch.add(torch.add(flat_x.sum(), flat_y.sum()),1)
