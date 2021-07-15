@@ -39,7 +39,7 @@ val_acc_history = []
 
 DEBUG = False
 NUM_BLOCKS = 4
-RESUME = True
+RESUME = False
 PRIME_CACHE = False
 
 class AerialImageDataSet(Dataset):
