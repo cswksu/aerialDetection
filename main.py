@@ -246,9 +246,9 @@ def main():
         if accuracy > bestAcc:
             bestAcc = accuracy
             best_model = copy.deepcopy(model)
+            torch.save(best_model.state_dict(), './checkpoints/project.pth')
+            torch.save(bestAcc, './checkpoints/bestAcc.pth')
         print('Epoch num: ' + str(epoch)+'; Accuracy: ' + str(accuracy))
-    torch.save(best_model.state_dict(), './checkpoints/project.pth')
-    torch.save(bestAcc, './checkpoints/bestAcc.pth')
     writer.close()
 
 
