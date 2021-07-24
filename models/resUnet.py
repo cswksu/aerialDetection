@@ -72,9 +72,10 @@ class ResUNet(nn.Module):
             self.upsample_blocks.append(thisUpBlock)
             last_layer_features = targ_layer_features
             targ_layer_features = targ_layer_features // 2
-        self.conv = nn.Conv2d(last_layer_features, 1, 1, 1)
+        self.conv = nn.Conv2d(last_layer_features, 2, 1, 1)
         self.dropout = nn.Dropout2d(0.25)
-        self.sigmoid = nn.Sigmoid()
+        #self.softmax = nn.Softmax()
+        #self.sigmoid = nn.Sigmoid()
         self.upsample_blocks = nn.ModuleList(self.upsample_blocks)
         self.downsample_blocks = nn.ModuleList(self.downsample_blocks)
 
@@ -93,5 +94,5 @@ class ResUNet(nn.Module):
             x = module(concat_block, x)
         x = self.dropout(x)
         x = self.conv(x)
-        x = self.sigmoid(x)
+        #x = self.softmax(x)
         return x

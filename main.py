@@ -27,8 +27,8 @@ writer = SummaryWriter()
 # absolute path to root of dataset. should contain images/ and gt/ folders
 data_path = 'C:/aerialimagelabeling/AerialImageDataset'
 
-NUM_EPOCHS = 40
-BATCH_SIZE = 20
+NUM_EPOCHS = 20
+BATCH_SIZE = 25
 
 total_batch_count = 0
 
@@ -39,7 +39,8 @@ val_acc_history = []
 
 DEBUG = False
 NUM_BLOCKS = 4
-RESUME = False
+RESUME = True
+RESUME_ACC = True
 PRIME_CACHE = False
 
 class AerialImageDataSet(Dataset):
@@ -117,7 +118,7 @@ class AerialImageDataSet(Dataset):
 def accuracy(output, target):
     #calculate accuracy of 1xHwW network output vs 1xHxW target
     with torch.no_grad():
-        best_guess = torch.round(output)
+        best_guess = torch.lt(output[:, 0, :, :],output[:, 1, :, :]).long()
         flat_out = torch.flatten(best_guess)
         flat_targ = torch.flatten(target)
         abs_diff = torch.abs(torch.sub(flat_out, flat_targ))
@@ -141,7 +142,7 @@ def train(epoch, data_loader, model, optimizer, criterion):
         #forward pass
         out = model.forward(data)
         num_entries = out.shape[0]
-        loss = criterion.forward(out, target)
+        loss = criterion.forward(out, target.long().squeeze(1))
         #track overall epoch loss
         sum_loss = out.shape[0] * loss
         lossNumerator += sum_loss.item()
@@ -170,7 +171,7 @@ def train(epoch, data_loader, model, optimizer, criterion):
 def writeImage(out, targ, epoch):
     #write batch of images to tensorboard
     with torch.no_grad():
-        roundedOut = torch.round(out)
+        roundedOut = torch.lt(out[:, 0, :, :],out[:, 1, :, :]).long().unsqueeze(1)
         gridOut = torchvision.utils.make_grid(roundedOut)
         gridTarg = torchvision.utils.make_grid(targ)
         writer.add_image('val_targ', gridTarg, epoch)
@@ -189,15 +190,17 @@ def validate(epoch, val_loader, model, criterion):
                 data = data.cuda()
                 target = target.cuda()
             out = model.forward(data)
-            loss = criterion.forward(out, target)
+            loss = criterion.forward(out, target.long().squeeze(1))
             lossNumerator += out.shape[0] * loss.item()
             lossDenominator += out.shape[0]
             acc = accuracy(out, target)
             accuracyNumerator += out.shape[0] * acc
             accuracyDenominator += out.shape[0]
             if idx == 0:
+                #print(out.shape)
                 writeImage(out, target, epoch)
-                writer.add_pr_curve('validation', target, out, epoch, weights=None)
+                prob = out[:, 1, :, :]
+                writer.add_pr_curve('validation', target.squeeze(), prob, epoch)
     val_loss_history.append(lossNumerator/lossDenominator)
     val_acc_history.append(accuracyNumerator/accuracyDenominator)
     print('Validation Epoch #' + str(epoch)+' - Loss: ' + str(val_loss_history[-1]) + '; Acc: ' + str(val_acc_history[-1]))
@@ -215,6 +218,8 @@ def main():
     train_size = int(0.8*(len(train_and_val_dataset))) #80/20 train/val
     val_size = len(train_and_val_dataset) - train_size
     #train/val split
+    torch.manual_seed(0)
+
     train_dataset, val_dataset = torch.utils.data.random_split(train_and_val_dataset, [train_size, val_size])
     
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
@@ -233,19 +238,27 @@ def main():
     model = ResUNet(num_blocks=NUM_BLOCKS)
     if torch.cuda.is_available():
         model = model.cuda()
-    criterion = diceLoss()
+    criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters())
     bestAcc = 0
     best_model = None
     if RESUME: #loads last model state dict into memory
-        model.state_dict = torch.load('./checkpoints/project.pth')
+        print('loading previous best model and accuracy from file')
+        best_state_dict = torch.load('./checkpoints/project.pth')
+        model.load_state_dict(best_state_dict)
         best_model = copy.deepcopy(model)
         bestAcc = torch.load('./checkpoints/bestAcc.pth')
+        print('accuracy to beat: ' + str(bestAcc*100) + '%')
+    elif RESUME_ACC:
+        print('loading previous best accuracy from file')
+        bestAcc = torch.load('./checkpoints/bestAcc.pth')
+        print('accuracy to beat: ' + str(bestAcc*100) + '%')
     for epoch in range(NUM_EPOCHS):
         train(epoch, train_loader, model, optimizer, criterion)
 
         accuracy = validate(epoch, val_loader, model, criterion)
         if accuracy > bestAcc:
+            print('new best model with acc: ' + str(accuracy))
             bestAcc = accuracy
             best_model = copy.deepcopy(model)
             torch.save(best_model.state_dict(), './checkpoints/project.pth')
