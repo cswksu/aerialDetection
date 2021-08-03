@@ -11,7 +11,7 @@ import os
 from PIL import Image
 
 from models import ResUNet
-from losses import flatMSE, diceLoss
+from losses import flatMSE, diceLoss, dice_two_class
 
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset, random_split
@@ -28,7 +28,7 @@ writer = SummaryWriter()
 data_path = 'C:/aerialimagelabeling/AerialImageDataset'
 
 NUM_EPOCHS = 20
-BATCH_SIZE = 25
+BATCH_SIZE = 20
 
 total_batch_count = 0
 
@@ -39,8 +39,8 @@ val_acc_history = []
 
 DEBUG = False
 NUM_BLOCKS = 4
-RESUME = True
-RESUME_ACC = True
+RESUME = False
+RESUME_ACC = False
 PRIME_CACHE = False
 
 class AerialImageDataSet(Dataset):
@@ -177,6 +177,34 @@ def writeImage(out, targ, epoch):
         writer.add_image('val_targ', gridTarg, epoch)
         writer.add_image('val_output', gridOut, epoch)
 
+def fp(pred, targ):
+    with torch.no_grad():
+        est = torch.lt(pred[:, 0, :, :],pred[:, 1, :, :])
+        negative_targ = (1-targ).squeeze()
+        intersect = torch.logical_and(est, negative_targ).float()
+        return torch.sum(intersect).item()
+        
+
+
+def tp(pred, targ):
+    with torch.no_grad():
+        est = torch.lt(pred[:, 0, :, :],pred[:, 1, :, :])
+        intersect = torch.logical_and(est, targ.squeeze()).float()
+        return torch.sum(intersect).item()
+
+def fn(pred, targ):
+    with torch.no_grad():
+        est_neg = torch.gt(pred[:, 0, :, :],pred[:, 1, :, :])
+        intersect = torch.logical_and(est_neg, targ.squeeze()).float()
+        return torch.sum(intersect).item()
+
+def tn(pred, targ):
+    with torch.no_grad():
+        est_neg = torch.gt(pred[:, 0, :, :],pred[:, 1, :, :])
+        negative_targ = 1-targ
+        intersect = torch.logical_and(est_neg, negative_targ.squeeze()).float()
+        return torch.sum(intersect).item()
+
 def validate(epoch, val_loader, model, criterion):
     #validation step
     model.eval()
@@ -184,12 +212,20 @@ def validate(epoch, val_loader, model, criterion):
     accuracyDenominator = 0
     lossNumerator = 0
     lossDenominator = 0
+    true_pos = 0
+    false_pos = 0
+    true_neg = 0
+    false_neg = 0
     for idx, (data, target) in enumerate(val_loader):
         with torch.no_grad():
             if torch.cuda.is_available():
                 data = data.cuda()
                 target = target.cuda()
             out = model.forward(data)
+            true_pos = true_pos + tp(out, target)
+            false_pos = false_pos + fp(out, target)
+            true_neg = true_neg + tn(out, target)
+            false_neg = false_neg + fn(out, target)
             loss = criterion.forward(out, target.long().squeeze(1))
             lossNumerator += out.shape[0] * loss.item()
             lossDenominator += out.shape[0]
@@ -199,13 +235,23 @@ def validate(epoch, val_loader, model, criterion):
             if idx == 0:
                 #print(out.shape)
                 writeImage(out, target, epoch)
+                sm = nn.Softmax(dim=1)
+                out = sm(out)
                 prob = out[:, 1, :, :]
                 writer.add_pr_curve('validation', target.squeeze(), prob, epoch)
+    precision = true_pos/(true_pos+false_pos)
+    recall = true_pos/(true_pos+false_neg)
+    f1 = 2*true_pos/(2*true_pos+false_neg+false_pos)
+    iou = true_pos/(true_pos+false_pos+false_neg)
     val_loss_history.append(lossNumerator/lossDenominator)
     val_acc_history.append(accuracyNumerator/accuracyDenominator)
     print('Validation Epoch #' + str(epoch)+' - Loss: ' + str(val_loss_history[-1]) + '; Acc: ' + str(val_acc_history[-1]))
     writer.add_scalar('Loss/val', val_loss_history[-1], epoch)
     writer.add_scalar('Acc/val', val_acc_history[-1], epoch)
+    writer.add_scalar('precision/val', precision, epoch)
+    writer.add_scalar('recall/val', recall, epoch)
+    writer.add_scalar('f1/val', f1, epoch)
+    writer.add_scalar('IOU/val', iou, epoch)
     return val_acc_history[-1]
 
 
@@ -219,6 +265,19 @@ def main():
     val_size = len(train_and_val_dataset) - train_size
     #train/val split
     torch.manual_seed(0)
+    num_ones =  710215250
+    num_zeros = 44289784750
+    i=9
+    beta = 1 - np.power(float(10), -i)
+    effectivePos = (1-np.power(beta, num_ones))/(1-beta)
+    effectiveNeg = (1-np.power(beta, num_zeros))/(1-beta)
+    weight_neg = 1/effectiveNeg
+    weight_pos = 1/effectivePos
+    sum_weights = weight_pos + weight_neg
+    weight_neg = weight_neg/sum_weights
+    weight_pos = weight_pos/sum_weights
+    weights = torch.FloatTensor([weight_neg, weight_pos])
+
 
     train_dataset, val_dataset = torch.utils.data.random_split(train_and_val_dataset, [train_size, val_size])
     
@@ -235,10 +294,12 @@ def main():
                 print('val iteration: ' + str(idx))
             pass
         print('val cache complete')
-    model = ResUNet(num_blocks=NUM_BLOCKS)
+    model = ResUNet(num_blocks=NUM_BLOCKS, batch_norm=True)
     if torch.cuda.is_available():
         model = model.cuda()
-    criterion = nn.CrossEntropyLoss()
+        weights = weights.cuda()
+    criterion = dice_two_class.diceLossTwoClass()
+    #criterion = nn.CrossEntropyLoss(weight=weights)
     optimizer = torch.optim.Adam(model.parameters())
     bestAcc = 0
     best_model = None
